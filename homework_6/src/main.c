@@ -14,7 +14,7 @@
 #define BTN_FLOOR_2 GPIO_NUM_26
 #define BTN_FLOOR_3 GPIO_NUM_27
 
-#define SR_DATA  GPIO_NUM_22
+#define SR_DATA GPIO_NUM_22
 #define SR_CLOCK GPIO_NUM_18
 #define SR_LATCH GPIO_NUM_5
 
@@ -28,11 +28,11 @@
 
 #define BUZZER_PIN GPIO_NUM_33
 
-#define DOOR_OPEN_TIME        2000
-#define DOOR_CLOSE_TIME       1500
+#define DOOR_OPEN_TIME 2000
+#define DOOR_CLOSE_TIME 1500
 #define TRAVEL_TIME_PER_FLOOR 2000
-#define ARRIVAL_TIME          700
-#define DEBOUNCE_TIME         50
+#define ARRIVAL_TIME 700
+#define DEBOUNCE_TIME 50
 
 static const char *TAG = "ELEVATOR";
 
@@ -57,6 +57,7 @@ static int64_t movement_start_time = 0;
 static int64_t last_blink_time = 0;
 
 static bool movement_led_state = false;
+static int64_t buzzer_stop_time = 0;
 
 static int64_t get_time_ms(void)
 {
@@ -187,13 +188,27 @@ static void buzzer_tone(int frequency)
     ledc_set_duty(
         LEDC_LOW_SPEED_MODE,
         LEDC_CHANNEL_0,
-        512
+        96
     );
 
     ledc_update_duty(
         LEDC_LOW_SPEED_MODE,
         LEDC_CHANNEL_0
     );
+}
+
+static void buzzer_beep(int frequency, int duration_ms)
+{
+    buzzer_tone(frequency);
+    buzzer_stop_time = get_time_ms() + duration_ms;
+}
+
+static void buzzer_update(void)
+{
+    if (buzzer_stop_time > 0 && get_time_ms() >= buzzer_stop_time) {
+        buzzer_tone(0);
+        buzzer_stop_time = 0;
+    }
 }
 
 typedef struct {
@@ -336,7 +351,7 @@ static void elevator_update(void)
 
                     current_state = DOORS_CLOSING;
                     state_start_time = now;
-                    buzzer_tone(1000);
+                    buzzer_beep(1600, 90);
                     update_leds();
                 }
             }
@@ -349,6 +364,7 @@ static void elevator_update(void)
                 last_blink_time = now;
                 movement_led_state = true;
                 buzzer_tone(0);
+                buzzer_stop_time = 0;
 
                 ESP_LOGI(
                     TAG,
@@ -370,13 +386,30 @@ static void elevator_update(void)
             int64_t travel_time =
                 (int64_t)distance * TRAVEL_TIME_PER_FLOOR;
 
-            if (now - movement_start_time >= travel_time) {
+            int64_t elapsed = now - movement_start_time;
+
+            int direction = (target_floor > current_floor) ? 1 : -1;
+            int floors_passed = (int)(elapsed / TRAVEL_TIME_PER_FLOOR);
+
+            if (floors_passed > distance)
+                floors_passed = distance;
+
+            int shown_floor = current_floor + (direction * floors_passed);
+            static int last_shown_floor = -1;
+
+            if (shown_floor != last_shown_floor) {
+                display_floor(shown_floor);
+                last_shown_floor = shown_floor;
+            }
+
+            if (elapsed >= travel_time) {
                 current_floor = target_floor;
                 display_floor(current_floor);
+                last_shown_floor = current_floor;
                 current_state = ARRIVING;
                 state_start_time = now;
                 movement_led_state = false;
-                buzzer_tone(2500);
+                buzzer_beep(1800, 110);
 
                 ESP_LOGI(
                     TAG,
@@ -392,7 +425,6 @@ static void elevator_update(void)
 
         case ARRIVING:
             if (now - state_start_time >= ARRIVAL_TIME) {
-                buzzer_tone(0);
                 active_floor = 0;
                 current_state = DOORS_OPEN;
                 state_start_time = now;
@@ -475,6 +507,7 @@ void app_main(void)
     while (1) {
         check_buttons();
         elevator_update();
+        buzzer_update();
         update_movement_led();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
