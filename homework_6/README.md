@@ -158,7 +158,7 @@ I used the ESP-IDF logging system to follow the elevator's operation. The Serial
 
 The demonstration video shows how the elevator responds to floor requests, processes multiple requests, changes floors, and uses the LEDs, seven-segment display, and buzzer.
 
-[Watch the demonstration video](ADD_VIDEO_LINK_HERE)
+(https://github.com/aylarsopyyeva173/Introduction-to-Robotics/blob/main/homework_6/images/WhatsApp%20Video%202026-11-19%20at%2010.14.17%20PM.mp4)
 
 ## 12. Conclusion
 
